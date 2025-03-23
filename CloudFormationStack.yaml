@@ -1,11 +1,11 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Lab template
+Description: CloudFormation Lab template to create VPC, EC2 instance, S3 bucket, Security group. 
 
 # Lab VPC with public subnet and Internet Gateway
 
 Parameters:
 
-  LabVpcCidr:
+  MyVpcCidr:
     Type: String
     Default: 10.0.0.0/20
 
@@ -15,53 +15,65 @@ Parameters:
 
   AmazonLinuxAMIID:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2 #This parameter uses the AWS Systems Manager Parameter Store to retrieve the latest AMI. This makes it easy to deploy stacks in different regions without having to manually specify an AMI ID for every region.
 
 Resources:
 
 ###########
 # VPC with Internet Gateway
 ###########
+
   MyS3Bucket:
     Type: AWS::S3::Bucket
 
-  LabVPC:
+  MyVPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !Ref LabVpcCidr
+      CidrBlock: !Ref MyVpcCidr
       EnableDnsSupport: true
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: Lab VPC
+          Value: My VPC
   
-  MyEC2:
+  WebServer:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref AmazonLinuxAMIID
       InstanceType: t3.micro
       SecurityGroupIds: 
-        - !Ref AppSecurityGroup
+        - !Ref WebServerSG
       SubnetId: !Ref PublicSubnet
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          echo "UserData script started" >> /var/log/userdata.log
+          yum update -y
+          yum install -y httpd
+          systemctl enable httpd
+          systemctl start httpd
+          echo "<h1>Web Server Running</h1>" > /var/www/html/index.html
+          echo "UserData script completed" >> /var/log/userdata.log
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WebServer --region ${AWS::Region}
       Tags:
         - Key: Name
-          Value: App Server
+          Value: Web Server
 
   IGW:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: Lab IGW
+          Value: My IGW
 
   VPCtoIGWConnection:
     Type: AWS::EC2::VPCGatewayAttachment
     DependsOn:
       - IGW
-      - LabVPC
+      - MyVPC
     Properties:
       InternetGatewayId: !Ref IGW
-      VpcId: !Ref LabVPC
+      VpcId: !Ref MyVPC
 
 ###########
 # Public Route Table
@@ -69,9 +81,9 @@ Resources:
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
-    DependsOn: LabVPC
+    DependsOn: MyVPC
     Properties:
-      VpcId: !Ref LabVPC
+      VpcId: !Ref MyVPC
       Tags:
         - Key: Name
           Value: Public Route Table
@@ -92,9 +104,9 @@ Resources:
 
   PublicSubnet:
     Type: AWS::EC2::Subnet
-    DependsOn: LabVPC
+    DependsOn: MyVPC
     Properties:
-      VpcId: !Ref LabVPC
+      VpcId: !Ref MyVPC
       MapPublicIpOnLaunch: true
       CidrBlock: !Ref PublicSubnetCidr
       AvailabilityZone: !Select 
@@ -118,21 +130,16 @@ Resources:
 # App Security Group
 ###########
 
-  AppSecurityGroup:
+  WebServerSG:
     Type: AWS::EC2::SecurityGroup
-    DependsOn: LabVPC
+    DependsOn: MyVPC
     Properties:
-      GroupName: App
-      GroupDescription: Enable access to App
-      VpcId: !Ref LabVPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
+      GroupDescription: Allow HTTP and SSH access
+      GroupName: WebServerSG
+      VpcId: !Ref MyVPC
       Tags:
         - Key: Name
-          Value: App
+          Value: WebServerSG
 
 ###########
 # Outputs
@@ -140,5 +147,5 @@ Resources:
 
 Outputs:
 
-  LabVPCDefaultSecurityGroup:
-    Value: !Sub ${LabVPC.DefaultSecurityGroup}
+  MyVPCDefaultSecurityGroup:
+    Value: !Sub ${MyVPC.DefaultSecurityGroup}
