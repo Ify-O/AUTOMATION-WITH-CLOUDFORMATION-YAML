@@ -168,3 +168,9 @@ Outputs:
 
   MyVPCDefaultSecurityGroup:
     Value: !Sub ${MyVPC.DefaultSecurityGroup}
+
+  S3BucketName:
+    Value: !Ref MyS3Bucket
+
+  EC2PublicIP:
+    Value: !GetAtt WebServer.PublicIp
