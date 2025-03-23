@@ -19,7 +19,9 @@ Resources:
 ###########
 # VPC with Internet Gateway
 ###########
-
+  MyS3Bucket:
+    Type: AWS::S3::Bucket
+    
   LabVPC:
     Type: AWS::EC2::VPC
     Properties:
