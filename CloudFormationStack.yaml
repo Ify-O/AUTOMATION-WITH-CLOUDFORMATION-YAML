@@ -27,7 +27,7 @@ Resources:
     Type: AWS::S3::Bucket
 
 ############
-# VPC with Internet Gateway
+# VPC with supporting resources
 ###########
 
   MyVPC:
