@@ -20,11 +20,15 @@ Parameters:
 Resources:
 
 ###########
-# VPC with Internet Gateway
+# S3 Bucket
 ###########
 
   MyS3Bucket:
     Type: AWS::S3::Bucket
+
+############
+# VPC with Internet Gateway
+###########
 
   MyVPC:
     Type: AWS::EC2::VPC
@@ -35,6 +39,10 @@ Resources:
       Tags:
         - Key: Name
           Value: My VPC
+  
+###########
+# EC2 Instance with Userdata
+###########
   
   WebServer:
     Type: AWS::EC2::Instance
@@ -58,7 +66,8 @@ Resources:
       Tags:
         - Key: Name
           Value: Web Server
-    # Wait Handle
+  
+  # Wait Handle
   WaitHandle:
     Type: AWS::CloudFormation::WaitConditionHandle
 
@@ -67,8 +76,11 @@ Resources:
     Type: AWS::CloudFormation::WaitCondition
     Properties:
       Handle: !Ref WaitHandle
-      Timeout: "300"
+      Timeout: "120"
 
+###########
+# Internet Gateway
+###########
   IGW:
     Type: AWS::EC2::InternetGateway
     Properties:
@@ -137,7 +149,7 @@ Resources:
       SubnetId: !Ref PublicSubnet
 
 ###########
-# App Security Group
+# Web Security Group
 ###########
 
   WebServerSG:
