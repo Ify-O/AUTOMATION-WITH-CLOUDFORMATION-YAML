@@ -147,6 +147,15 @@ Resources:
       GroupDescription: Allow HTTP and SSH access
       GroupName: WebServerSG
       VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.0.0/16 # Only allows SSH access from within the same VPC
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 # Allow HTTP traffic. Open to all IPv4 addresses
       Tags:
         - Key: Name
           Value: WebServerSG
