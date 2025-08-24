@@ -1,0 +1,170 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation Lab template to create VPC, EC2 instance, S3 bucket, Security group. 
+
+# Lab VPC with public subnet and Internet Gateway
+
+Parameters:
+
+  MyVpcCidr:
+    Type: String
+    Default: 10.0.0.0/20
+
+  PublicSubnetCidr:
+    Type: String
+    Default: 10.0.0.0/24
+
+  AmazonLinuxAMIID:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2 #This parameter uses the AWS Systems Manager Parameter Store to retrieve the latest AMI. This makes it easy to deploy stacks in different regions without having to manually specify an AMI ID for every region.
+
+Resources:
+
+###########
+# VPC with Internet Gateway
+###########
+
+  MyS3Bucket:
+    Type: AWS::S3::Bucket
+
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref MyVpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: My VPC
+  
+  WebServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmazonLinuxAMIID
+      InstanceType: t3.micro
+      SecurityGroupIds: 
+        - !Ref WebServerSG
+      SubnetId: !Ref PublicSubnet
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          echo "UserData script started" >> /var/log/userdata.log
+          yum update -y
+          yum install -y httpd
+          systemctl enable httpd
+          systemctl start httpd
+          echo "<h1>Web Server Running</h1>" > /var/www/html/index.html
+          echo "UserData script completed" >> /var/log/userdata.log
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WebServer --region ${AWS::Region}
+      Tags:
+        - Key: Name
+          Value: Web Server
+    # Wait Handle
+  WaitHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+
+  # Wait Condition
+  WaitCondition:
+    Type: AWS::CloudFormation::WaitCondition
+    Properties:
+      Handle: !Ref WaitHandle
+      Timeout: "300"
+
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: My IGW
+
+  VPCtoIGWConnection:
+    Type: AWS::EC2::VPCGatewayAttachment
+    DependsOn:
+      - IGW
+      - MyVPC
+    Properties:
+      InternetGatewayId: !Ref IGW
+      VpcId: !Ref MyVPC
+
+###########
+# Public Route Table
+###########
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn: MyVPC
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: Public Route Table
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - PublicRouteTable
+      - IGW
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+      RouteTableId: !Ref PublicRouteTable
+
+###########
+# Public Subnet
+###########
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    DependsOn: MyVPC
+    Properties:
+      VpcId: !Ref MyVPC
+      MapPublicIpOnLaunch: true
+      CidrBlock: !Ref PublicSubnetCidr
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs 
+          Ref: AWS::Region
+      Tags:
+        - Key: Name
+          Value: Public Subnet
+
+  PublicRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+      - PublicRouteTable
+      - PublicSubnet
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+
+###########
+# App Security Group
+###########
+
+  WebServerSG:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: MyVPC
+    Properties:
+      GroupDescription: Allow HTTP and SSH access
+      GroupName: WebServerSG
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.0.0/16 # Only allows SSH access from within the same VPC
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 # Allow HTTP traffic. Open to all IPv4 addresses
+      Tags:
+        - Key: Name
+          Value: WebServerSG
+
+###########
+# Outputs
+###########
+
+Outputs:
+
+  MyVPCDefaultSecurityGroup:
+    Value: !Sub ${MyVPC.DefaultSecurityGroup}
